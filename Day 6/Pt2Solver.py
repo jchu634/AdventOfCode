@@ -1,7 +1,5 @@
+import copy
 from tqdm import tqdm
-import time
-import numpy as np
-import re
 import logging
 logging.basicConfig(
     level=logging.INFO,
@@ -13,95 +11,177 @@ logging.basicConfig(
 )
 
 
-def printGrid(arr):
-    for i in range(len(arr)):
-        logging.info(arr[i])
+def print_arrays_side_by_side(array1, array2):
+    max_height = max(len(array1), len(array2))
+    max_width1 = max(len(row) for row in array1)
+    max_width2 = max(len(row) for row in array2)
+    logging.info("")
+
+    for i in range(max_height):
+        row1 = array1[i] if i < len(array1) else [' '] * max_width1
+        row2 = array2[i] if i < len(array2) else [' '] * max_width2
+
+        combined_row = ''.join(row1) + '    ' + ''.join(row2)
+        logging.info(combined_row)
+
+    input()
 
 
-def rotateArr(arr, rotations):
-    splitArr = np.array([list(row) for row in arr])
-    splitArr = np.rot90(splitArr, k=rotations)
-    return np.array([''.join(row) for row in splitArr])
+def getGuardLocations(maze):
+    for i in range(len(maze)):
+        for j in range(len(maze[0])):
+            if maze[i][j] == '^':
+                return j, i  # y,x
 
 
-def countX(arr):
-    total = 0
-    for row in arr:
-        total += row.count("X")
-    return total
+def isStuckinLoop(maze, guardX, guardY):
+    direction = 'u'
+    locations_visited_granular = set()
+    maxY, maxX = len(maze)-1, len(maze[0])-1
 
-
-def isStuckinLoop(npArr):
-    iterations = 1
     while True:
-        npArr = rotateArr(npArr, 3)
-        for i, row in enumerate(npArr):
-            if '^' in list(row):
-                newRowSplit = row.split("^")
-                newRow = newRowSplit[0] + "X"  # + newRow[1].replace(".", "X")
-                try:
-                    index = newRowSplit[1].index("#")
-                    newRowSplitSplit = newRowSplit[1].split('#', 1)
-                    newRow += "".join(list(newRowSplitSplit[0].replace(".", "X"))[
-                        :-1]) + "^#" + newRowSplitSplit[1]
-                    npArr[i] = newRow
-                except ValueError:
-                    # There is no #: i.e. guard exits
+        # logging.info(f"{guardX}, {guardY}, {
+        #              maze[guardY][guardX]}, {direction}"
+
+        match direction:
+            case "u":
+                if guardY == 0:
                     return False
 
-                break
-        while True:
-            iterations += 1
-            if iterations % 1000 == 0:
-                logging.error(f"High iterations:{iterations}")
-            npArr = rotateArr(npArr, 1)
+                if maze[guardY-1][guardX] == "#":
+                    direction = 'r'
+                else:
+                    guardY -= 1
+                    if (guardX, guardY, direction) in locations_visited_granular:
+                        return True
+                    else:
+                        locations_visited_granular.add(
+                            (guardX, guardY, direction))
 
-            for i, row in enumerate(npArr):
-                if '^' in list(row):
-                    newRowSplit = row.split("^")
-                    newRow = newRowSplit[0] + "X"
-                    try:
-                        index = newRowSplit[1].index("#")
-                        newRowSplitSplit = newRowSplit[1].split('#', 1)
-                        # logging.info(newRowSplitSplit[0])
-                        if '' == newRowSplitSplit[0]:
-                            return False
-                        elif '.' not in newRowSplitSplit[0]:
-                            return True
-                        newRow += "".join(list(newRowSplitSplit[0].replace(".", "X"))[
-                            :-1]) + "^#" + newRowSplitSplit[1]
-                        npArr[i] = newRow
-                    except ValueError:
-                        # There is no #: i.e. guard exits
-                        return False
+            case "r":
+                if guardX == maxX:
+                    return False
 
-                    break
-        printGrid(npArr)
+                if maze[guardY][guardX+1] == "#":
+                    direction = 'd'
+                else:
+                    guardX += 1
+                    if (guardX, guardY, direction) in locations_visited_granular:
+                        return True
+                    else:
+                        locations_visited_granular.add(
+                            (guardX, guardY, direction))
+
+            case "d":
+                if guardY == maxY:
+                    return False
+
+                if maze[guardY+1][guardX] == "#":
+                    direction = 'l'
+                else:
+                    guardY += 1
+                    if (guardX, guardY, direction) in locations_visited_granular:
+                        return True
+                    else:
+                        locations_visited_granular.add(
+                            (guardX, guardY, direction))
+
+            case "l":
+                if guardX == 0:
+                    return False
+
+                if maze[guardY][guardX-1] == "#":
+                    direction = 'u'
+                else:
+                    guardX -= 1
+                    if (guardX, guardY, direction) in locations_visited_granular:
+                        return True
+                    else:
+                        locations_visited_granular.add(
+                            (guardX, guardY, direction))
+
+
+def getSolvedGrid(maze, guardX, guardY, ignoreOrigin=False):
+
+    direction = 'u'
+    locations_visited = []
+    logging.info(getGuardLocations(maze))
+    maxY, maxX = len(maze)-1, len(maze[0])-1
+    if not ignoreOrigin:
+        locations_visited.append((guardX, guardY, direction))
+
+    while True:
+        # logging.info(f"{guardX}, {guardY}, {
+        #              maze[guardY][guardX]}, {direction}")
+
+        match direction:
+            case "u":
+                if guardY == 0:
+                    return locations_visited
+
+                if maze[guardY-1][guardX] == "#":
+                    direction = 'r'
+                else:
+                    guardY -= 1
+                    locations_visited.append((guardX, guardY))
+
+            case "r":
+                if guardX == maxX:
+                    return locations_visited
+
+                if maze[guardY][guardX+1] == "#":
+                    direction = 'd'
+                else:
+                    guardX += 1
+                    locations_visited.append((guardX, guardY))
+
+            case "d":
+                if guardY == maxY:
+                    return locations_visited
+
+                if maze[guardY+1][guardX] == "#":
+                    direction = 'l'
+                else:
+                    guardY += 1
+                    locations_visited.append((guardX, guardY))
+
+            case "l":
+                if guardX == 0:
+                    return locations_visited
+
+                if maze[guardY][guardX-1] == "#":
+                    direction = 'u'
+                else:
+                    guardX -= 1
+                    locations_visited.append((guardX, guardY))
 
 
 def getAns():
+    maze = []
     with open("input.txt", "r") as file:
-        npArr = np.array(file.read().splitlines())
+        for line in file.read().splitlines():
+            maze.append(list(line))
+
+    guardX, guardY = getGuardLocations(maze)
+
+    locations = getSolvedGrid(maze, guardX, guardY)
+    locations = set(locations)
+    logging.info(f"Pt1 Ans: {len(locations)}")
 
     total = 0
-    for i in tqdm(range(len(npArr))):
-        for j in range(len(npArr[i])):
-            copiedArr = npArr.copy()
-            if list(copiedArr[i])[j] == ".":
-                copiedString = copiedArr[i]
-                copiedArr[i] = copiedString[:j] + "#" + copiedString[j+1:]
-                isStuck = isStuckinLoop(copiedArr)
-                if isStuck:
-                    total += 1
-                    copiedArr = npArr.copy()
-                    copiedString = copiedArr[i]
-                    copiedArr[i] = copiedString[:j] + "O" + copiedString[j+1:]
 
-                    # printGrid(copiedArr)
-                    # logging.info("")
+    for location in tqdm(locations):    # Only evaluate places the guard will patrol
+
+        # Needs to be a deep copy and not a shallow copy
+        copiedMaze = copy.deepcopy(maze)
+        copiedMaze[location[1]][location[0]] = "#"
+
+        isStuck = isStuckinLoop(copiedMaze, guardX, guardY)
+        if isStuck:
+            total += 1
     return total
 
 
 if __name__ == "__main__":
     logging.info("Started Program")
-    logging.info(f"Ans: {getAns()}")
+    logging.info(f"Pt2 Ans: {getAns()}")
